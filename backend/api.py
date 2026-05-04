@@ -21,16 +21,15 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from face_pipeline import load_config, load_known_faces
-from recognizer import FrameRecognizer
+if TYPE_CHECKING:
+    from recognizer import FrameRecognizer
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -84,8 +83,8 @@ def default_stats() -> dict:
 class RecognitionState:
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.recognizer: Optional[FrameRecognizer] = None
-        self.cap: Optional[cv2.VideoCapture] = None
+        self.recognizer: Optional["FrameRecognizer"] = None
+        self.cap: Optional[Any] = None
         self.thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         self.run_id = ""
@@ -106,7 +105,14 @@ app.add_middleware(
 )
 
 
-def open_capture(source: str) -> cv2.VideoCapture:
+@app.api_route("/", methods=["GET", "HEAD"])
+def root() -> dict:
+    return {"ok": True, "service": "ZEEX Face Recognition API"}
+
+
+def open_capture(source: str) -> Any:
+    import cv2
+
     resolved_source: str | int = int(source) if source.isdigit() else source
     cap = cv2.VideoCapture(resolved_source, cv2.CAP_FFMPEG)
     if not cap.isOpened():
@@ -138,7 +144,10 @@ def source_open_error(source: str) -> str:
     )
 
 
-def get_recognizer() -> FrameRecognizer:
+def get_recognizer() -> "FrameRecognizer":
+    from face_pipeline import load_config
+    from recognizer import FrameRecognizer
+
     if not CONFIG_PATH.exists():
         raise HTTPException(status_code=500, detail="config.yaml not found")
     encodings_path = BASE_DIR / "encodings.pkl"
@@ -154,7 +163,7 @@ def get_recognizer() -> FrameRecognizer:
         return state.recognizer
 
 
-def reset_recognizer_runtime(recognizer: FrameRecognizer) -> None:
+def reset_recognizer_runtime(recognizer: "FrameRecognizer") -> None:
     recognizer.frame_idx = 0
     recognizer.tracked = []
     recognizer.tracked_persons = []
@@ -164,7 +173,7 @@ def reset_recognizer_runtime(recognizer: FrameRecognizer) -> None:
 
 
 def apply_settings(
-    recognizer: FrameRecognizer,
+    recognizer: "FrameRecognizer",
     req: StartRequest | SettingsRequest,
 ) -> None:
     camera_id = getattr(req, "cameraId", None)
@@ -221,10 +230,12 @@ class LatestFrameSlot:
 
 def recognition_loop(
     source: str,
-    recognizer: FrameRecognizer,
+    recognizer: "FrameRecognizer",
     stop_event: threading.Event,
     run_id: str,
 ) -> None:
+    import cv2
+
     end_message = "Stopped"
     slot = LatestFrameSlot()
     capture_done = threading.Event()
@@ -232,7 +243,7 @@ def recognition_loop(
 
     def capture_worker() -> None:
         fail_count = 0
-        cap: Optional[cv2.VideoCapture] = None
+        cap: Optional[Any] = None
         try:
             cap = open_capture(source)
             if not cap.isOpened():
@@ -328,6 +339,8 @@ def recognition_loop(
 
 
 def known_workers_payload() -> list[dict]:
+    from face_pipeline import load_known_faces
+
     encodings_path = BASE_DIR / "encodings.pkl"
     if not encodings_path.exists():
         return []
@@ -379,6 +392,8 @@ def workers() -> dict:
 
 @app.get("/api/defaults")
 def defaults() -> dict:
+    from face_pipeline import load_config
+
     cfg = load_config(str(CONFIG_PATH)) if CONFIG_PATH.exists() else {}
     stream_cfg = cfg.get("stream", {}) or {}
     rec_cfg = cfg.get("recognition", {}) or {}
