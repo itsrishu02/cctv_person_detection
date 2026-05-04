@@ -168,19 +168,15 @@ class FrameRecognizer:
         # Optional person detector (catches back-of-head / occluded face)
         self.person_enabled = bool(person_cfg.get("enabled", False))
         self.person_detector: Optional[PersonDetector] = None
-        if self.person_enabled:
-            person_model_path = base_dir / person_cfg.get(
-                "model", "models/yolov8n.pt"
-            )
-            self.person_detector = PersonDetector(
-                str(person_model_path.resolve()),
-                conf=float(person_cfg.get("conf", 0.5)),
-                imgsz=int(person_cfg.get("imgsz", 960)),
-                min_height_px=int(person_cfg.get("min_height_px", 70)),
-                min_aspect_ratio=float(person_cfg.get("min_aspect_ratio", 1.4)),
-                max_aspect_ratio=float(person_cfg.get("max_aspect_ratio", 4.5)),
-                max_area_frac=float(person_cfg.get("max_area_frac", 0.55)),
-            )
+        self.person_model_path = str((
+            base_dir / person_cfg.get("model", "models/yolov8n.pt")
+        ).resolve())
+        self.person_conf = float(person_cfg.get("conf", 0.5))
+        self.person_imgsz = int(person_cfg.get("imgsz", 960))
+        self.person_min_height_px = int(person_cfg.get("min_height_px", 70))
+        self.person_min_aspect_ratio = float(person_cfg.get("min_aspect_ratio", 1.4))
+        self.person_max_aspect_ratio = float(person_cfg.get("max_aspect_ratio", 4.5))
+        self.person_max_area_frac = float(person_cfg.get("max_area_frac", 0.55))
 
         self.logger: Optional[EventLogger] = None
         if log_cfg.get("enable_file_log") or log_cfg.get("enable_sqlite"):
@@ -219,6 +215,19 @@ class FrameRecognizer:
     def close(self) -> None:
         if self.logger is not None:
             self.logger.close()
+
+    def _ensure_person_detector(self) -> PersonDetector:
+        if self.person_detector is None:
+            self.person_detector = PersonDetector(
+                self.person_model_path,
+                conf=self.person_conf,
+                imgsz=self.person_imgsz,
+                min_height_px=self.person_min_height_px,
+                min_aspect_ratio=self.person_min_aspect_ratio,
+                max_aspect_ratio=self.person_max_aspect_ratio,
+                max_area_frac=self.person_max_area_frac,
+            )
+        return self.person_detector
 
     def _label_for(self, m: MatchResult) -> Tuple[str, Tuple[int, int, int]]:
         if m.worker_id is None:
@@ -286,8 +295,8 @@ class FrameRecognizer:
 
             # ---- Person detection (back-of-head fallback) ----
             new_persons: List[TrackedPerson] = []
-            if self.person_detector is not None and self.person_enabled:
-                person_boxes = self.person_detector.detect(proc)
+            if self.person_enabled:
+                person_boxes = self._ensure_person_detector().detect(proc)
                 for (px1, py1, px2, py2, pconf) in person_boxes:
                     has_face = any(
                         self._face_inside_person(t.box, (px1, py1, px2, py2))

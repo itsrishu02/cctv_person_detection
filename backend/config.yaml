@@ -30,12 +30,12 @@ recognition:
   yolo_conf: 0.25
   # YOLO inference resolution. Default Ultralytics value is 640, which loses
   # tiny faces in factory-floor CCTV. 1280 roughly doubles small-face recall.
-  yolo_imgsz: 1280
+  yolo_imgsz: 640
   # Run detection every N frames (recognition is cheap, detection is the cost)
-  detect_every_n_frames: 2
+  detect_every_n_frames: 5
   # Resize frame to this width before processing (keeps aspect ratio). 0 = no
   # resize - recommended now that imgsz=1280 handles the scaling.
-  process_width: 0
+  process_width: 640
   # Skip the embedder for face crops smaller than this many pixels (per side).
   # We still BOX them on screen so the operator sees the detection, just don't
   # try to ID them - tiny crops give garbage SFace embeddings.
@@ -49,7 +49,7 @@ recognition:
 # person box that doesn't have a face matched inside it gets drawn in orange
 # as "PERSON (no face)".
 person_detection:
-  enabled: true
+  enabled: false
   model: "models/yolov8n.pt"
   # Raised from 0.4 -> 0.5: yolov8n + factory backgrounds (yarn cones, racks,
   # mannequin-like clutter) trigger person false positives at 0.4. 0.5 cuts

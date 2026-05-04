@@ -157,9 +157,15 @@ def get_recognizer() -> "FrameRecognizer":
             detail="encodings.pkl not found. Run python encode_faces.py first.",
         )
     with state.lock:
+        if state.recognizer is not None:
+            return state.recognizer
+
+    cfg = load_config(str(CONFIG_PATH))
+    recognizer = FrameRecognizer(cfg, BASE_DIR)
+
+    with state.lock:
         if state.recognizer is None:
-            cfg = load_config(str(CONFIG_PATH))
-            state.recognizer = FrameRecognizer(cfg, BASE_DIR)
+            state.recognizer = recognizer
         return state.recognizer
 
 
@@ -194,8 +200,10 @@ def apply_settings(
         recognizer.empty_zone_threshold_frames = max(1, int(req.emptyZoneFrames))
     if req.personEnabled is not None:
         recognizer.person_enabled = bool(req.personEnabled)
-    if req.personConf is not None and recognizer.person_detector is not None:
-        recognizer.person_detector.conf = float(req.personConf)
+    if req.personConf is not None:
+        recognizer.person_conf = float(req.personConf)
+        if recognizer.person_detector is not None:
+            recognizer.person_detector.conf = float(req.personConf)
 
 
 def stop_current(wait: bool = True) -> None:
@@ -338,6 +346,42 @@ def recognition_loop(
                 state.message = end_message
 
 
+def run_recognition_session(
+    source: str,
+    req: StartRequest,
+    stop_event: threading.Event,
+    run_id: str,
+) -> None:
+    try:
+        with state.lock:
+            if state.run_id != run_id:
+                return
+            state.message = "Loading recognition models"
+
+        recognizer = get_recognizer()
+        apply_settings(recognizer, req)
+        reset_recognizer_runtime(recognizer)
+
+        with state.lock:
+            if state.run_id != run_id:
+                return
+            state.latest_stats["empty_zone_threshold"] = (
+                recognizer.empty_zone_threshold_frames
+            )
+
+        recognition_loop(source, recognizer, stop_event, run_id)
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
+        stop_event.set()
+        with state.lock:
+            if state.run_id == run_id:
+                state.cap = None
+                state.running = False
+                state.message = f"Start failed: {exc}"
+
+
 def known_workers_payload() -> list[dict]:
     from face_pipeline import load_known_faces
 
@@ -441,16 +485,13 @@ def start_recognition(req: StartRequest) -> dict:
     if not source:
         raise HTTPException(status_code=400, detail="Source is required")
 
-    recognizer = get_recognizer()
     stop_current(wait=True)
-    apply_settings(recognizer, req)
-    reset_recognizer_runtime(recognizer)
 
     stop_event = threading.Event()
     run_id = str(time.time_ns())
     thread = threading.Thread(
-        target=recognition_loop,
-        args=(source, recognizer, stop_event, run_id),
+        target=run_recognition_session,
+        args=(source, req, stop_event, run_id),
         daemon=True,
     )
 
@@ -460,15 +501,17 @@ def start_recognition(req: StartRequest) -> dict:
         state.thread = thread
         state.run_id = run_id
         state.running = True
-        state.message = "Opening stream"
+        state.message = "Starting"
         state.latest_jpeg = None
         state.latest_stats = default_stats()
-        state.latest_stats["empty_zone_threshold"] = (
-            recognizer.empty_zone_threshold_frames
-        )
+        if req.emptyZoneFrames is not None:
+            state.latest_stats["empty_zone_threshold"] = max(
+                1,
+                int(req.emptyZoneFrames),
+            )
 
     thread.start()
-    return {"running": True, "message": "Started", "source": source}
+    return {"running": True, "message": "Starting", "source": source}
 
 
 @app.post("/api/recognition/stop")
@@ -481,7 +524,17 @@ def stop_recognition() -> dict:
 
 @app.post("/api/recognition/settings")
 def update_recognition_settings(req: SettingsRequest) -> dict:
-    recognizer = get_recognizer()
+    with state.lock:
+        recognizer = state.recognizer
+        running = state.running
+
+    if recognizer is None:
+        return {
+            "running": running,
+            "emptyZoneFrames": req.emptyZoneFrames,
+            "message": "Recognition models are still loading",
+        }
+
     apply_settings(recognizer, req)
     with state.lock:
         state.latest_stats["empty_zone_threshold"] = (
