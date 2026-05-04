@@ -1,0 +1,14 @@
+# ZEEX AI - Face Recognition v0 backend
+# Python 3.11 recommended.
+
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1
+python-multipart>=0.0.9,<1
+
+ultralytics>=8.4,<9
+opencv-python-headless>=4.10,<5
+onnxruntime>=1.17
+
+numpy>=1.26,<2
+pandas>=2.0
+PyYAML>=6.0

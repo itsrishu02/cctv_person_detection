@@ -1,0 +1,70 @@
+# ZEEX AI - Facial Recognition Module
+# Configuration
+
+paths:
+  dataset_dir: "../../dataset"
+  workers_csv: "../../workers.csv"
+  encodings_file: "encodings.pkl"
+  yolo_face_model: "models/yolov8n-face.pt"
+  sface_model: "models/face_recognition_sface_2021dec.onnx"
+  events_log: "logs/events.log"
+  events_db: "logs/events.db"
+
+stream:
+  # Default RTSP URL (overridden by UI input)
+  rtsp_url: "rtsp://65.1.214.31:8554/cam1"
+  # Fallback local file used if RTSP fails and no upload provided
+  fallback_video: "C:\\Users\\RishuSingh\\Downloads\\Mins_project\\videos\\cam17_20260316_051036.mp4"
+  camera_id: "CAM-01"
+  zone: "Zone-A"
+
+recognition:
+  # Cosine similarity threshold (SFace). Higher = stricter match.
+  # 0.45 is past OpenCV's default (0.363) and cuts most false-positive worker
+  # IDs at distance / odd angles. Drop to 0.35-0.40 if you start to see real
+  # workers tagged UNKNOWN; raise to 0.55+ if false positives still slip
+  # through under good lighting.
+  cosine_threshold: 0.45
+  # YOLO face-detection confidence threshold. Lowered from 0.4 -> 0.25 so the
+  # detector picks up small / profile faces. Comes with a few more false faces.
+  yolo_conf: 0.25
+  # YOLO inference resolution. Default Ultralytics value is 640, which loses
+  # tiny faces in factory-floor CCTV. 1280 roughly doubles small-face recall.
+  yolo_imgsz: 1280
+  # Run detection every N frames (recognition is cheap, detection is the cost)
+  detect_every_n_frames: 2
+  # Resize frame to this width before processing (keeps aspect ratio). 0 = no
+  # resize - recommended now that imgsz=1280 handles the scaling.
+  process_width: 0
+  # Skip the embedder for face crops smaller than this many pixels (per side).
+  # We still BOX them on screen so the operator sees the detection, just don't
+  # try to ID them - tiny crops give garbage SFace embeddings.
+  min_face_for_embed: 32
+  # Consecutive processed frames with zero detected people before the zone is
+  # declared empty. Raise this if EMPTY_ZONE flickers during brief detector misses.
+  empty_zone_threshold_frames: 3
+
+# Catch-all for back-of-head / extreme profile / occluded face cases.
+# Runs a generic YOLOv8n COCO detector filtered to the 'person' class. Any
+# person box that doesn't have a face matched inside it gets drawn in orange
+# as "PERSON (no face)".
+person_detection:
+  enabled: true
+  model: "models/yolov8n.pt"
+  # Raised from 0.4 -> 0.5: yolov8n + factory backgrounds (yarn cones, racks,
+  # mannequin-like clutter) trigger person false positives at 0.4. 0.5 cuts
+  # ~80% of those without losing real workers.
+  conf: 0.5
+  imgsz: 960
+  # Geometric sanity filters - applied AFTER the model. Tune if your camera
+  # angle is unusual (e.g. top-down -> aspect ratio gets weird).
+  min_height_px: 70           # drop boxes < 70 px tall (almost always FPs)
+  min_aspect_ratio: 1.4       # height/width - real persons are tall+narrow
+  max_aspect_ratio: 4.5       # drop pillar-shaped boxes
+  max_area_frac: 0.55         # drop boxes covering > 55% of the frame
+
+logging:
+  enable_file_log: true
+  enable_sqlite: true
+  # Cooldown (seconds) before re-logging the same worker in the same camera
+  cooldown_seconds: 30
