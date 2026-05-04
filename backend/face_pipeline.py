@@ -15,7 +15,6 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 import yaml
-from ultralytics import YOLO
 
 
 # ---------- Config ----------
@@ -37,6 +36,8 @@ class FaceDetector:
 
     def __init__(self, model_path: str, conf: float = 0.4,
                  imgsz: int = 1280, iou: float = 0.5, device: str = "cpu"):
+        from ultralytics import YOLO
+
         self.model = YOLO(model_path)
         self.conf = conf
         self.imgsz = imgsz
@@ -86,6 +87,8 @@ class PersonDetector:
                  max_aspect_ratio: float = 4.5,
                  max_area_frac: float = 0.55,
                  device: str = "cpu"):
+        from ultralytics import YOLO
+
         """
         Filters applied AFTER YOLO to suppress object-as-person false positives:
           - conf            : raise to 0.5 by default (was 0.4) - cuts most FPs.

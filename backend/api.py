@@ -14,6 +14,7 @@ os.environ.setdefault(
     "OPENCV_FFMPEG_CAPTURE_OPTIONS",
     "rtsp_transport;tcp|stimeout;5000000|max_delay;500000|buffer_size;1048576|reconnect;1|reconnect_streamed;1|reconnect_delay_max;2",
 )
+os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/Ultralytics")
 
 import shutil
 import threading
