@@ -99,7 +99,8 @@ export default function Page() {
   });
   const [frameUrl, setFrameUrl] = useState("");
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [error, setError] = useState("");
+  const [backendError, setBackendError] = useState("");
+  const [actionError, setActionError] = useState("");
   const skipNextCameraStart = useRef(true);
   const statusFailureCount = useRef(0);
   const runningRef = useRef(false);
@@ -108,10 +109,10 @@ export default function Page() {
   const zoneIsEmpty = status.stats?.empty_zone ?? true;
 
   const statusClass = useMemo(() => {
-    if (error) return "offline";
+    if (backendError) return "offline";
     if (zoneStatus === "CHECKING_EMPTY_ZONE") return "checking";
     return zoneIsEmpty ? "empty" : "occupied";
-  }, [error, zoneIsEmpty, zoneStatus]);
+  }, [backendError, zoneIsEmpty, zoneStatus]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -119,14 +120,14 @@ export default function Page() {
       if (!res.ok) throw new Error("Status request failed");
       const nextStatus = (await res.json()) as StatusResponse;
       statusFailureCount.current = 0;
-      setError((prev) => (prev === "Backend is not responding" ? "" : prev));
+      setBackendError("");
       setStatus(nextStatus);
       setRunning(nextStatus.running);
       runningRef.current = nextStatus.running;
     } catch (err) {
       statusFailureCount.current += 1;
       if (statusFailureCount.current >= 3) {
-        setError("Backend is not responding");
+        setBackendError("Backend is not responding");
       }
       throw err;
     }
@@ -209,7 +210,7 @@ export default function Page() {
           }
         }));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Settings update failed");
+        setActionError(err instanceof Error ? err.message : "Settings update failed");
       }
     }, 200);
     return () => window.clearTimeout(timer);
@@ -259,7 +260,8 @@ export default function Page() {
 
   async function start(sourceOverride?: string, cameraIdOverride?: string) {
     setBusy(true);
-    setError("");
+    setActionError("");
+    setBackendError("");
     try {
       const source = sourceOverride || (await resolveSource());
       if (!source) throw new Error("Source is required");
@@ -287,7 +289,7 @@ export default function Page() {
       setFrameUrl(`${API_BASE}/api/recognition/frame?t=${Date.now()}`);
       await fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Start failed");
+      setActionError(err instanceof Error ? err.message : "Start failed");
     } finally {
       setBusy(false);
     }
@@ -295,13 +297,14 @@ export default function Page() {
 
   async function stop() {
     setBusy(true);
-    setError("");
+    setActionError("");
+    setBackendError("");
     try {
       await fetch(`${API_BASE}/api/recognition/stop`, { method: "POST" });
       setRunning(false);
       await fetchStatus();
     } catch {
-      setError("Stop request failed");
+      setActionError("Stop request failed");
     } finally {
       setBusy(false);
     }
@@ -340,7 +343,7 @@ export default function Page() {
         </div>
         <div className={`status-pill ${statusClass}`}>
           <Activity size={16} aria-hidden="true" />
-          {error ? "BACKEND_OFFLINE" : zoneStatus}
+          {backendError ? "BACKEND_OFFLINE" : zoneStatus}
         </div>
       </header>
 
@@ -520,7 +523,9 @@ export default function Page() {
               </button>
             </div>
 
-            {error && <div className="error">{error}</div>}
+            {(backendError || actionError) && (
+              <div className="error">{backendError || actionError}</div>
+            )}
           </div>
         </aside>
 
