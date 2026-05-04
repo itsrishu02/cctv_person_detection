@@ -1,3 +1,10 @@
+---
+title: ZEEX Face Recognition API
+sdk: docker
+app_port: 7860
+suggested_hardware: cpu-basic
+---
+
 # ZEEX AI Face Recognition v0
 
 This is the Vercel/v0-style version of `zeex-face-recognition`.
